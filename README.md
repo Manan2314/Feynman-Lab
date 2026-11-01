@@ -95,7 +95,7 @@ flowchart LR
 | ① | **Coursework & Repo Archivist** | Retrieves grounded source chunks (BM25 over repos, seed notes, uploads and Wikipedia), writes the hidden rubric, extracts notes. | `lib/agents/archivist.ts` |
 | ② | **Diagnostic Assessor** | Writes calibration questions, scores them deterministically (deeper questions weigh more), and names misconceptions → `LearnerProfile`. | `lib/agents/diagnostic.ts` |
 | ③ | **Sandbox Architect** (Teacher) | Generates the lesson as JSON props for the widget registry; rewrites one block or the whole lesson on request. Never emits HTML or JS. | `lib/agents/architect.ts` |
-| ④ | **Socratic Protégé** (Pupil) | A naive classmate persona. One question per turn, scaled by difficulty, graded against the hidden rubric. | `lib/agents/pupil.ts` |
+| ④ | **Pupil** | A naive classmate persona. One question per turn, scaled by difficulty, graded against the hidden rubric. | `lib/agents/pupil.ts` |
 | ⑤ | **Compliance Manager** (Guardrail) | Structural repair, citation resolution, fidelity audit with one regeneration, Pupil audit, dispute resolution. | `lib/agents/guardrail.ts` |
 
 ### How a request flows
