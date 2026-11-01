@@ -239,7 +239,15 @@ export interface Dictation {
   stop(): void;
   /** Stop immediately and ignore anything still in flight (e.g. after sending). */
   abort(): void;
+  /**
+   * Forget everything recognised so far (including the phrase in progress), so
+   * onText only reports new speech. Call it when the learner edits the text.
+   */
+  rebase(): void;
 }
+
+/** Sessions in a row that heard nothing before dictation gives up (~5–8 s each in Chrome). */
+const MAX_SILENT_RESTARTS = 10;
 
 /**
  * Starts dictation; calls onText with the full running transcript.
@@ -247,7 +255,7 @@ export interface Dictation {
  * until the user stops, so long explanations aren't cut short.
  */
 export function listen(onText: (text: string, final: boolean) => void, onStop: (err?: string) => void): Dictation {
-  const noop = { stop() {}, abort() {} };
+  const noop = { stop() {}, abort() {}, rebase() {} };
   const W = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
   const Ctor = W.SpeechRecognition ?? W.webkitSpeechRecognition;
   if (!Ctor) {
@@ -266,22 +274,41 @@ export function listen(onText: (text: string, final: boolean) => void, onStop: (
 
   let committed = ""; // final text from earlier sessions (after auto-restarts)
   let sessionFinal = "";
+  let sessionInterim = "";
+  let seen = 0; // results in the current session
+  let skip = 0; // results before this index were dropped by rebase()
+  let carry: { index: number; seen: string } | null = null; // phrase in progress at rebase()
+  let lastInterim = ""; // full transcript of the session's phrase in progress
   let wantStop = false;
   let aborted = false;
   let ended = false;
   let fatal: string | undefined;
-  let restarts = 0;
+  let silentRestarts = 0;
+  let heard = false; // this session produced a result
 
   rec.onresult = (e) => {
     if (aborted) return;
+    heard = true;
+    seen = e.results.length;
+    const last = e.results[seen - 1];
+    lastInterim = last && !last.isFinal ? last[0].transcript.trim() : "";
     let fin = "";
     let interim = "";
-    for (let i = 0; i < e.results.length; i++) {
+    // Words added to the phrase that was in progress at rebase(): its start is already in the box.
+    const c = carry && e.results[carry.index];
+    if (carry && c) {
+      const t = c[0].transcript.trim();
+      const tail = t.toLowerCase().startsWith(carry.seen.toLowerCase()) ? t.slice(carry.seen.length) : "";
+      if (c.isFinal) fin += tail + " ";
+      else interim += tail;
+    }
+    for (let i = skip; i < e.results.length; i++) {
       const r = e.results[i];
       if (r.isFinal) fin += r[0].transcript + " ";
       else interim += r[0].transcript;
     }
     sessionFinal = fin;
+    sessionInterim = interim;
     onText(`${committed}${fin}${interim}`.replace(/\s+/g, " ").trim(), !interim);
   };
   rec.onerror = (e) => {
@@ -289,10 +316,18 @@ export function listen(onText: (text: string, final: boolean) => void, onStop: (
     fatal = STT_ERRORS[e.error] ?? `Speech recognition error: ${e.error}`;
   };
   rec.onend = () => {
-    committed += sessionFinal;
-    sessionFinal = "";
-    if (!wantStop && !aborted && !fatal && restarts < 30) {
-      restarts++;
+    // Keep a phrase the session ended on before finalising: the learner already saw it.
+    committed += sessionFinal + (sessionInterim ? sessionInterim + " " : "");
+    sessionFinal = sessionInterim = "";
+    seen = skip = 0;
+    carry = null;
+    lastInterim = "";
+    silentRestarts = heard ? 0 : silentRestarts + 1;
+    heard = false;
+    if (!wantStop && !aborted && !fatal && silentRestarts > MAX_SILENT_RESTARTS) {
+      fatal = "Stopped listening after a long silence. Press Speak to continue.";
+    }
+    if (!wantStop && !aborted && !fatal) {
       try {
         rec.start();
         return;
@@ -324,6 +359,12 @@ export function listen(onText: (text: string, final: boolean) => void, onStop: (
       try {
         rec.abort();
       } catch {}
+    },
+    rebase() {
+      // The phrase in progress keeps its index when it finalises: skip what was already shown of it.
+      carry = lastInterim ? { index: seen - 1, seen: lastInterim } : null;
+      committed = sessionFinal = sessionInterim = "";
+      skip = seen;
     },
   };
 }

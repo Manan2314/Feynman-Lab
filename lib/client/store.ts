@@ -164,10 +164,14 @@ export function getUploads(): ExtraDoc[] {
     return [];
   }
 }
-export function setUploads(docs: ExtraDoc[]) {
+/** Returns false when the browser refused to store them (e.g. storage quota exceeded). */
+export function setUploads(docs: ExtraDoc[]): boolean {
   try {
     sessionStorage.setItem(P + "uploads", JSON.stringify(docs));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /* export */
