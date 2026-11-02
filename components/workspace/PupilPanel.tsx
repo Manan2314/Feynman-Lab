@@ -35,6 +35,7 @@ export function PupilPanel({
   const [voiceOut, setVoiceOut] = useState(false);
   const [mic, setMic] = useState(false);
   const dictation = useRef<Dictation | null>(null);
+  const dictationBase = useRef(""); // text in the box that dictation appends to
   const [listenable, setListenable] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
@@ -129,10 +130,10 @@ export function PupilPanel({
     }
     stopSpeaking(); // don't transcribe the Pupil's own voice
     setErr("");
-    const base = input.trim() ? input.trim() + " " : "";
+    dictationBase.current = input.trim() ? input.trim() + " " : "";
     setMic(true);
     dictation.current = listen(
-      (text) => setInput((base + text).slice(0, LIMITS.message)),
+      (text) => setInput((dictationBase.current + text).slice(0, LIMITS.message)),
       (e) => {
         setMic(false);
         dictation.current = null;
@@ -301,7 +302,14 @@ export function PupilPanel({
               placeholder={teach.transcript.length <= 1 ? "Explain it like you're talking to a friend…" : "Answer the Pupil…"}
               value={input}
               maxLength={LIMITS.message}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Keep the learner's edit: dictation continues after it instead of overwriting it.
+                if (dictation.current) {
+                  dictation.current.rebase();
+                  dictationBase.current = e.target.value.trim() ? e.target.value.trimEnd() + " " : "";
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
               }}

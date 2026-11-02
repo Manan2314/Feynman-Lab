@@ -55,9 +55,11 @@ export default function Home() {
       else if (docs.length < LIMITS.uploads) docs.push(doc);
       else skipped.push(`${f.name} (limit is ${LIMITS.uploads} files)`);
     }
-    setUp(docs);
-    setUploads(docs);
+    // Only list what was actually stored: that is what gets sent with each request.
+    const saved = setUploads(docs);
+    setUp(saved ? docs : getUploads());
     const notes = [
+      saved ? "" : "Your browser couldn't store these files (storage is full). Try fewer or smaller files.",
       skipped.length ? `Skipped ${skipped.join(", ")}.` : "",
       truncated ? `${truncated} file(s) were cut to the first ${LIMITS.uploadChars / 1000}k characters.` : "",
     ].filter(Boolean);

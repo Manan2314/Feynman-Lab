@@ -54,6 +54,36 @@ export function githubSlug(heading: string): string {
 const SOURCE_COMMENT = /<!--\s*source:\s*(\S+)\s*-->/;
 const MAX_CHUNK = 1600;
 
+/**
+ * Break a paragraph longer than `max` on line, then word, boundaries. Plain-text
+ * uploads often have no blank lines at all, and the whole file would otherwise
+ * become one chunk that is truncated to its first couple of thousand characters.
+ */
+function splitLong(para: string, max: number): string[] {
+  if (para.length <= max) return [para];
+  const lines: string[] = [];
+  for (let line of para.split("\n")) {
+    while (line.length > max) {
+      const space = line.lastIndexOf(" ", max);
+      const at = space > max / 2 ? space : max;
+      lines.push(line.slice(0, at));
+      line = line.slice(at).trimStart();
+    }
+    lines.push(line);
+  }
+  const out: string[] = [];
+  let buf = "";
+  for (const line of lines) {
+    if (buf && buf.length + 1 + line.length > max) {
+      out.push(buf);
+      buf = "";
+    }
+    buf += (buf ? "\n" : "") + line;
+  }
+  if (buf.trim()) out.push(buf);
+  return out;
+}
+
 export function chunkDoc(doc: SourceDoc, origin: Chunk["origin"]): Chunk[] {
   const lines = doc.text.replace(/\r/g, "").split("\n");
   const sections: { heading: string; body: string[] }[] = [{ heading: doc.title, body: [] }];
@@ -82,10 +112,10 @@ export function chunkDoc(doc: SourceDoc, origin: Chunk["origin"]): Chunk[] {
     const url = override ?? (doc.url ? (si === 0 ? doc.url : `${doc.url}#${anchor}`) : "");
     const clean = body.replace(SOURCE_COMMENT, "").trim();
 
-    // Split oversized sections on paragraph boundaries.
+    // Split oversized sections on paragraph boundaries (long paragraphs on lines/words).
     const parts: string[] = [];
     let buf = "";
-    for (const para of clean.split(/\n{2,}/)) {
+    for (const para of clean.split(/\n{2,}/).flatMap((p) => splitLong(p, MAX_CHUNK))) {
       if (buf && buf.length + para.length > MAX_CHUNK) {
         parts.push(buf);
         buf = "";
